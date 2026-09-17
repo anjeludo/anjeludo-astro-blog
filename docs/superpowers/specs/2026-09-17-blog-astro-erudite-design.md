@@ -203,7 +203,7 @@ diseño. Los cuatro:
 | `MetaHead.astro:59` | `<script is:inline>` que lee `localStorage.theme` antes del primer pintado (anti-parpadeo del modo oscuro) | extraer a `public/theme-init.js`, invocar con `<script src="/theme-init.js">` |
 | `SeriesReader.astro:1` | `<script is:inline>` que restaura la posición de scroll en los posts encadenados en serie | extraer a `public/series-scroll.js`, invocar con `<script src="/series-scroll.js">` |
 | `lib/expressive-code/index.ts` | el plugin de Sätteri inyecta un `<style>` y uno o más `<script type="module">` **dentro del HTML de cada página con bloques de código** | vaciar `baseStyles`/`themeStyles`/`jsModules` en `customCreateRenderer` y servirlos como ficheros propios |
-| `astro.config.ts` (2) | Astro inlinea en un `<script type="module">` los scripts de componente sin imports que caben bajo el umbral de assets de Vite (`core/build/plugins/plugin-scripts.js`); afecta a `ThemeToggle`, `ScrollToTop` y `TableOfContents` | `vite.build.assetsInlineLimit: 0` |
+| `astro.config.ts` (2) | Astro inlinea en un `<script type="module">` los scripts de componente sin imports que caben bajo el umbral de assets de Vite (`core/build/plugins/plugin-scripts.js`); afecta a `ThemeToggle` y `ScrollToTop`; `TableOfContents` tiene un import, así que nunca cumple la condición | `vite.build.assetsInlineLimit: 0` |
 
 Los dos scripts extraídos se invocan **sin `async` ni `defer`**, en la misma
 posición del documento que ocupaban. Un `<script src>` clásico es síncrono y
