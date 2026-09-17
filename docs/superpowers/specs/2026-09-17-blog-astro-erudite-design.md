@@ -67,34 +67,68 @@ etapas de Hugo y no hay que cambiar nada más.
 
 ### `deps` — la única etapa con red
 
-Monta el proyecto en `/src:ro` y el volumen `node_modules` encima de
-`/src/node_modules`. Ejecuta `bun install --frozen-lockfile`.
+Ejecuta `bun install --frozen-lockfile`. Solo ve el manifiesto y el lockfile; su
+única salida es el volumen `node_modules`.
 
 Con `--frozen-lockfile`, bun lee `package.json` y `bun.lock` pero no los reescribe,
-así que **esta etapa tampoco muta las fuentes**: su única salida es el volumen. La
-caché de bun se redirige con `BUN_INSTALL_CACHE_DIR=/tmp/.bun-cache` y `HOME=/tmp`.
+así que **esta etapa tampoco muta las fuentes**. La caché de bun se redirige con
+`BUN_INSTALL_CACHE_DIR=/tmp/.bun-cache` y `HOME=/tmp`.
+
+`bun.lock` incluye las variantes de plataforma de sharp para musl
+(`@img/sharp-linuxmusl-x64`, `@img/sharp-libvips-linuxmusl-x64`), así que la
+instalación en Alpine resuelve el binario correcto. Esto es obligatorio, no
+opcional: el tema usa `<Image>` de `astro:assets` en `BlogCard.astro`,
+`ProjectCard.astro` y `pages/blog/[...id].astro`, y sin sharp el build falla.
 
 ### `build` — sin red, fuentes en solo lectura
 
-`network_mode: none`, proyecto montado `:ro`, y tres volúmenes escribibles montados
-en rutas anidadas sobre él:
+`network_mode: none`, `user: "1000:1000"`, y las fuentes montadas en solo lectura.
+Ejecuta `bun run build`, que es `astro check && astro build`.
+
+### Los montajes: rutas explícitas, no un bind de la raíz
+
+Cada fuente se monta individualmente en solo lectura, en lugar de montar el
+proyecto entero con `.:/src:ro`:
 
 ```
-.:/src:ro                        las fuentes, intocables
-node_modules:/src/node_modules   dependencias + caché de Vite
-astro_cache:/src/.astro          tipos y caché de la content layer
-site_public:/src/dist            la salida
+deps:
+  ./package.json:/src/package.json:ro
+  ./bun.lock:/src/bun.lock:ro
+  node_modules:/src/node_modules
+
+build:
+  ./src:/src/src:ro
+  ./public:/src/public:ro
+  ./astro.config.ts:/src/astro.config.ts:ro
+  ./package.json:/src/package.json:ro
+  ./bun.lock:/src/bun.lock:ro
+  ./tsconfig.json:/src/tsconfig.json:ro
+  node_modules:/src/node_modules      deps + caché de Vite y de Astro
+  astro_cache:/src/.astro             tipos y caché de la content layer
+  site_public:/src/dist               la salida
 ```
 
-Los overlays anidados son necesarios porque **Astro escribe dentro del proyecto**
-durante el build: `.astro/` (tipos generados y caché de la content layer) y la caché
-de Vite en `node_modules/.astro`. Es el equivalente del `HUGO_CACHEDIR` /
-`HUGO_RESOURCEDIR` / `--noBuildLock` del proyecto de Hugo.
+**Motivo**: montar un volumen escribible en una ruta anidada dentro de un bind
+`:ro` exige que el punto de montaje ya exista, y Docker no puede crearlo dentro de
+un sistema de ficheros de solo lectura. En un clon recién hecho no existen
+`node_modules/`, `.astro/` ni `dist/`, así que `.:/src:ro` más overlays anidados
+fallaría con `read-only file system`. Con montajes explícitos, `/src` es un
+directorio propio del contenedor y Docker sí puede crear ahí los puntos de montaje.
+
+Los overlays escribibles son necesarios porque **Astro escribe dentro del
+proyecto** durante el build: `.astro/` (tipos generados y caché de la content
+layer) y las cachés de Vite y Astro bajo `node_modules/`. Es el equivalente del
+`HUGO_CACHEDIR` / `HUGO_RESOURCEDIR` / `--noBuildLock` del proyecto de Hugo.
 
 Al montar la salida exactamente en `/src/dist`, que es el `outDir` por defecto de
-Astro, el comando de build no necesita flags de destino: `bun run build`.
+Astro, el comando de build no necesita flags de destino.
 
-Comando: `bun run build` (que es `astro check && astro build`).
+Dos ventajas colaterales: `deps` no ve ni `src/` ni `public/`, y cualquier
+escritura que bun o Astro intentaran hacer en la raíz del proyecto va a la capa
+efímera del contenedor sin alcanzar el host.
+
+**Coste**: añadir un fichero de configuración en la raíz obliga a añadir su montaje
+al compose. Queda anotado en `CLAUDE.md`.
 
 ### `nginx` y `caddy`
 
@@ -154,6 +188,7 @@ problema. Los que sí:
 | `astro.config.ts` | `build.inlineStylesheets` por defecto es `'auto'`: inlinea en `<style>` las hojas de menos de ~4 kB, y erudite tiene 19 bloques `<style>` repartidos por sus componentes | `build.inlineStylesheets: 'never'` |
 | `MetaHead.astro:59` | `<script is:inline>` que lee `localStorage.theme` antes del primer pintado (anti-parpadeo del modo oscuro) | extraer a `public/theme-init.js`, invocar con `<script src="/theme-init.js">` |
 | `SeriesReader.astro:1` | `<script is:inline>` que restaura la posición de scroll en los posts encadenados en serie | extraer a `public/series-scroll.js`, invocar con `<script src="/series-scroll.js">` |
+| `lib/expressive-code/index.ts` | el plugin de Sätteri inyecta un `<style>` y uno o más `<script type="module">` **dentro del HTML de cada página con bloques de código** | vaciar `baseStyles`/`themeStyles`/`jsModules` en `customCreateRenderer` y servirlos como ficheros propios |
 
 Los dos scripts extraídos se invocan **sin `async` ni `defer`**, en la misma
 posición del documento que ocupaban. Un `<script src>` clásico es síncrono y
@@ -166,12 +201,72 @@ byte, y al actualizar el tema un cambio de un solo espacio bloquearía el script
 evidente—. `'unsafe-inline'` se descarta por renunciar a la protección contra XSS,
 que es la razón de ser de todo el montaje.
 
+### Expressive Code: el punto de fricción grande
+
+`satteri-expressive-code` (`dist/index.js:107-124`) construye elementos
+`<style>` y `<script type="module">` y los inserta en el árbol HAST del documento:
+
+```js
+extraElements.push({ type: "element", tagName: "style", ... })   // baseStyles + themeStyles
+extraElements.push({ type: "element", tagName: "script",
+                     properties: { type: "module" }, ... })      // los jsModules de EC
+```
+
+`firstBlockClaimed` es una variable del closure **por documento**, no global, así
+que esto se repite en cada página que tenga al menos un bloque de código.
+`@expressive-code/plugin-frames` sí emite un `jsModules` (`dist/index.js:533`): el
+botón de copiar código.
+
+`build.inlineStylesheets: 'never'` **no cubre nada de esto**, porque no son hojas de
+estilo de Astro sino parte del HTML renderizado del Markdown. Con la CSP estricta,
+en cada post con código los bloques quedarían sin estilo y el botón de copiar no
+funcionaría, y en silencio.
+
+La solución usa el punto de extensión documentado del paquete. `customCreateRenderer`
+—que erudite ya utiliza— devuelve `{ ec, baseStyles, themeStyles, jsModules }`. Se
+vacían los tres y se sirven como ficheros propios mediante **endpoints estáticos de
+Astro** con el contenido bajo una ruta con huella de contenido:
+
+```
+src/lib/expressive-code/assets.ts   calcula ecCss, ecJs y sus rutas /ec/<sha>.{css,js}
+src/pages/ec/[hash].css.ts          endpoint que emite el CSS
+src/pages/ec/[hash].js.ts           endpoint que emite el JS
+MetaHead.astro                      <link rel="stylesheet" href={ecCssPath}>
+Layout.astro                        <script type="module" src={ecJsPath} is:inline>
+```
+
+Se eligen endpoints estáticos en lugar de un módulo virtual de Vite porque son API
+pública y estable de Astro, sin depender de internals del bundler. La huella de
+contenido en la ruta permite que la regla de caché inmutable de `nginx.conf` siga
+siendo correcta sin tocarla.
+
+El `is:inline` de ese `<script>` significa "no lo empaquetes", no "ponlo inline": el
+tag conserva su `src` y sigue siendo un fichero externo del propio dominio, así que
+cumple la CSP.
+
+**Beneficio colateral, independiente de la seguridad**: los estilos base de
+Expressive Code dejan de duplicarse en cada página con código y pasan a ser un
+único fichero cacheado.
+
+El filtro del sitemap en `astro.config.ts` excluye `/ec/` para que esas rutas no
+aparezcan en él.
+
 ### A verificar en la implementación
 
-erudite activa `prefetch: { prefetchAll: true }`. Hay que comprobar en el HTML
-generado si Astro emite algo inline para ello. Si lo hiciera, se externaliza del
-mismo modo; si no, no hay nada que tocar. La verificación de la sección
-"Verificación" lo detecta automáticamente.
+Dos cosas:
+
+1. erudite activa `prefetch: { prefetchAll: true }`. Hay que comprobar en el HTML
+   generado si Astro emite algo inline para ello. Si lo hiciera, se externaliza del
+   mismo modo; si no, no hay nada que tocar.
+
+2. Además de `baseStyles` y `themeStyles`, el plugin inserta los `styles` que
+   devuelve cada llamada a `ec.render()`. Expressive Code los deduplica por
+   instancia del renderer, y el renderer es único y compartido, así que tras
+   recuperar las base styles ese conjunto suele venir vacío. Si no lo estuviera,
+   aparecería un `<style>` inline residual en la primera página construida.
+
+La verificación de la sección "Verificación" detecta ambos casos
+automáticamente: cualquier resto inline hace que el `grep` devuelva un fichero.
 
 ## Local vs producción
 
