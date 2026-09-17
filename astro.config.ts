@@ -22,6 +22,18 @@ export default defineConfig({
   build: {
     inlineStylesheets: "never",
   },
+  // PARCHE CSP sobre el tema. Astro inlinea en un <script type="module"> los
+  // scripts de componente que no tienen imports y caben bajo el umbral de
+  // assets de Vite (build/plugins/plugin-scripts.js), para ahorrarse una
+  // peticion. script-src 'self' los bloquea en silencio: el sintoma serian
+  // el conmutador de tema, el boton de subir y otros scripts de componente
+  // sin responder, sin que salte ningun error de compilacion. Con el umbral
+  // a 0 no se inlinea ningun script de componente.
+  vite: {
+    build: {
+      assetsInlineLimit: 0,
+    },
+  },
   integrations: [
     sitemap({
       filter: (page) =>
