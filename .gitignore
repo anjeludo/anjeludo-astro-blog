@@ -1,0 +1,29 @@
+# ─── Salida del build ─────────────────────────────────────────────
+# El sitio se publica en el volumen Docker site_public, pero si alguna
+# vez compilas fuera del contenedor apareceran estos.
+dist/
+.astro/
+
+# ─── Dependencias ─────────────────────────────────────────────────
+# Viven en el volumen Docker node_modules. Se reinstalan con:
+# docker compose up -d
+node_modules/
+
+# ─── Secretos y entorno ───────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Logs de gestores de paquetes ─────────────────────────────────
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# ─── Editores y sistema operativo ─────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
