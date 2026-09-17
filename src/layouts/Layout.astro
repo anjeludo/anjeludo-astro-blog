@@ -19,6 +19,7 @@ import Footer from "@/components/Footer.astro"
 import MetaHead from "@/components/MetaHead.astro"
 import Sidebar from "@/components/Sidebar.astro"
 import { SITE } from "@/consts"
+import { ecJsPath } from "@/lib/expressive-code/assets"
 
 type Props = { crumbs?: { label: string; href: string }[] }
 
@@ -46,6 +47,13 @@ const { crumbs } = Astro.props
         <page-footer><Footer /></page-footer>
       </page-content>
     </page-grid>
+
+    <!-- PARCHE CSP sobre el tema: los jsModules de Expressive Code (el boton
+         de copiar de @expressive-code/plugin-frames), que el plugin emitiria
+         inline. is:inline aqui significa "no lo empaquetes", no "ponlo
+         inline": el tag conserva su src y es un fichero externo del propio
+         dominio. type="module" ya implica defer. -->
+    <script type="module" src={ecJsPath} is:inline></script>
   </body>
 </html>
 
