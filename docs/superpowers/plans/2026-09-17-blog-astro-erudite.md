@@ -1014,7 +1014,10 @@ curl -ks "https://localhost/ec/$HASHCSS" | wc -c
 curl -ks "https://localhost/ec/$HASHCSS" | grep -c 'expressive-code'
 ```
 
-Esperado: `200` en los dos, `text/css` y `text/javascript` respectivamente, `Cache-Control: public, max-age=31536000, immutable` (la regla de nginx para `.css`/`.js`), un tamaño de CSS de varios kB y un recuento de `expressive-code` mayor que 0.
+Esperado: `200` en los dos, `text/css` y `application/javascript` respectivamente
+(el `Content-Type` del endpoint no sobrevive al build estático: Nginx sirve el
+fichero con su propio `mime.types`, que mapea `.js` a `application/javascript`.
+Es un tipo válido y no afecta ni a la ejecución ni a la CSP), `Cache-Control: public, max-age=31536000, immutable` (la regla de nginx para `.css`/`.js`), un tamaño de CSS de varios kB y un recuento de `expressive-code` mayor que 0.
 
 - [ ] **Step 10: Verificar en el navegador que los bloques de código funcionan**
 
@@ -1605,6 +1608,8 @@ Cubre lo que no es obvio leyendo un solo fichero. Contenido obligatorio:
 - **Two behaviour differences from the Hugo project**: whether Astro empties `outDir` on its own (record the answer found in Task 2 Step 5, and whether the explicit `find -delete` was needed), and that `astro check` fails the build on bad frontmatter, unlike Hugo. Also that a future `date` still publishes — use `draft: true`.
 - **sharp is mandatory**: the theme uses `<Image>` in three places, and `bun.lock` carries the musl variants that make it work on Alpine.
 - **The verification commands**, verbatim, including the zero-inline check.
+- **The content-layer cache can serve stale HTML across rebuilds.** Astro's content store lives at `node_modules/.astro/data-store.json` — inside the `node_modules` volume, NOT the `astro_cache` one — and is not invalidated when only the *markdown-rendering pipeline code* changes (as opposed to the markdown content). Symptom: a change to `src/lib/` appears to have no effect. Clear it with `docker run --rm -v blog-astro_node_modules:/nm alpine sh -c 'rm -rf /nm/.astro'` and rebuild. Discovered while implementing Task 5.
+- **The zero-inline check false-positives on HTML comments.** It is not HTML-aware, so a comment containing the literal text `<style>` or `<script>` followed by a word matches. Write such comments as "elemento style" rather than `<style>`. This is why the comment in `MetaHead.astro` is worded the way it is.
 - If the warm-up block from Task 5 Step 8 was needed, document why.
 
 - [ ] **Step 4: Verificar la documentación contra la realidad**
