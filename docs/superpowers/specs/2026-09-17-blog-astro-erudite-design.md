@@ -166,14 +166,26 @@ También desaparece la trampa de la fecha futura de Hugo: erudite filtra por
 Política final, servida por Caddy en local y en producción:
 
 ```
-default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
-font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none';
-form-action 'self'
+default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline';
+img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none';
+base-uri 'none'; form-action 'self'
 ```
 
-Un paso **más estricta** que la del proyecto de Hugo: se elimina la concesión
-`style-src-attr 'unsafe-inline'`, que allí existía por dos plantillas de TailBliss
-con atributos `style=""`. erudite no usa ninguno.
+**Idéntica** a la del proyecto de Hugo, incluida la concesión
+`style-src-attr 'unsafe-inline'`. Esa concesión es obligatoria aquí, por dos
+motivos independientes:
+
+- `@expressive-code/core` aplica los colores de sintaxis con una
+  `InlineStyleAnnotation` que hace `setProperty(node, "style", styleString)`. El
+  plugin de Shiki usa variantes de estilo por tema, así que **cada token de cada
+  bloque de código** lleva un `style="--0:…;--1:…"`.
+- `src/lib/expressive-code/inline.ts:48` (`highlightScope`) emite
+  `h("span", { style: "--0:…;--1:…" }, code)` para la sintaxis
+  `` `code{:.scope}` ``.
+
+Es una concesión estrecha y deliberada: `style-src-attr` gobierna solo los
+atributos `style=""`. Los bloques `<style>` siguen bloqueados por
+`style-src 'self'`, que es lo que de verdad importa aquí.
 
 Las fuentes IBM Plex vienen auto-hospedadas en `src/assets/fonts/`, así que
 `font-src 'self'` se cumple sin cambios.
