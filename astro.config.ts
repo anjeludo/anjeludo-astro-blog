@@ -15,6 +15,13 @@ export default defineConfig({
   site: "https://astro-erudite.vercel.app",
   compressHTML: true,
   prefetch: { prefetchAll: true },
+  // PARCHE CSP sobre el tema. Por defecto ('auto') Astro escribe en un <style>
+  // las hojas de menos de ~4 kB, y erudite tiene 19 bloques <style> repartidos
+  // por sus componentes. style-src 'self' los bloquearia y las paginas saldrian
+  // sin estilos.
+  build: {
+    inlineStylesheets: "never",
+  },
   integrations: [
     sitemap({
       filter: (page) =>

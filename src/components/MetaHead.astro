@@ -56,11 +56,11 @@ import { SITE } from "@/consts"
     crossorigin
   >
 
-  <script is:inline>
-    const theme = localStorage.theme
-    if (theme === "light" || theme === "dark")
-      document.documentElement.dataset.theme = theme
-  </script>
+  <!-- PARCHE CSP sobre el tema. is:inline aqui significa "no lo empaquetes",
+       no "ponlo inline": el tag conserva su src y sigue siendo un fichero
+       externo del propio dominio, asi que cumple script-src 'self'.
+       Sin async ni defer: tiene que correr antes del primer pintado. -->
+  <script src="/theme-init.js" is:inline></script>
 
   <slot />
 </head>

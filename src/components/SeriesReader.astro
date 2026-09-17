@@ -1,17 +1,5 @@
-<script is:inline>
-  ;(() => {
-    const type = performance.getEntriesByType("navigation")[0]?.type
-    if (type && type !== "navigate") return
-    if (location.hash) return
-    let pathname = location.pathname.replace(/\/+$/, "")
-    try {
-      pathname = decodeURIComponent(pathname)
-    } catch {}
-    document
-      .querySelector(`article[data-embedded][data-url="${pathname}"]`)
-      ?.scrollIntoView({ behavior: "instant" })
-  })()
-</script>
+<!-- PARCHE CSP sobre el tema. Ver public/series-scroll.js. -->
+<script src="/series-scroll.js" is:inline></script>
 
 <script>
   import { hashId, normalizePath } from "@/lib/utils"
