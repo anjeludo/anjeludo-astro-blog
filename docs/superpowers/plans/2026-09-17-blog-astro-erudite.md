@@ -61,7 +61,7 @@ Trae la plantilla al repo como código propio y evita que las dependencias y la 
 
 **Files:**
 - Create: todo el árbol de `jktrn/astro-erudite` en la raíz del proyecto (`astro.config.ts`, `package.json`, `bun.lock`, `tsconfig.json`, `biome.json`, `LICENSE`, `.gitattributes`, `src/`, `public/`)
-- Create: `.gitignore`
+- Modify: `.gitignore` (erudite trae el suyo; se sobrescribe **después** del rsync)
 - Delete: el `.git` del clon (los ficheros pasan a estar versionados en este repo)
 
 **Interfaces:**
@@ -83,11 +83,32 @@ Esperado: `1ffdf62bfd1c4dfc0fa770a0442b8545908689e7 2026-07-27 19:27:19 -0400`
 
 Si el commit no existe (historia reescrita en upstream), **parar y avisar**: el plan fija esta versión y cualquier otra hay que revisarla.
 
-- [ ] **Step 2: Escribir el `.gitignore` antes de copiar nada**
+- [ ] **Step 2: Copiar el árbol al proyecto sin el `.git` del clon**
 
-Se escribe primero para que el `git status` del paso 4 sea significativo. Conserva la estructura y los comentarios en español del proyecto de Hugo; cambia la sección de Hugo por la de Astro.
+```bash
+cd /media/angel/SSD200/proyectos/blog/blog-astro
+rsync -a --exclude='.git/' /tmp/erudite-upstream/ ./
+rm -rf /tmp/erudite-upstream
+ls -a
+```
 
-Crear `.gitignore`:
+Esperado en `ls -a`: `.gitattributes`, `.gitignore`, `LICENSE`, `README.md`,
+`astro.config.ts`, `biome.json`, `bun.lock`, `docs`, `package.json`, `public`,
+`src`, `tsconfig.json`. **No** debe aparecer `node_modules` ni `dist`.
+
+El `README.md` de erudite queda sobrescribiendo temporalmente; la tarea 8 lo
+reemplaza por el propio.
+
+- [ ] **Step 3: Sobrescribir el `.gitignore` de erudite por el propio**
+
+Este paso va **después** del `rsync` a propósito: erudite versiona su propio
+`.gitignore`, así que copiarlo antes lo perdería. El de erudite no ignora
+`.env`, y ese fichero lleva el dominio y el correo de ACME.
+
+Conserva la estructura y los comentarios en español del proyecto de Hugo;
+cambia la sección de Hugo por la de Astro.
+
+Sobrescribir `.gitignore` con:
 
 ```gitignore
 # ─── Salida del build ─────────────────────────────────────────────
@@ -121,18 +142,14 @@ bun-debug.log*
 Thumbs.db
 ```
 
-- [ ] **Step 3: Copiar el árbol al proyecto sin el `.git` del clon**
+Verificar que quedó el propio y no el de erudite:
 
 ```bash
-cd /media/angel/SSD200/proyectos/blog/blog-astro
-rsync -a --exclude='.git/' /tmp/erudite-upstream/ ./
-rm -rf /tmp/erudite-upstream
-ls -a
+grep -c 'Salida del build' .gitignore
+grep -c '^\.env$' .gitignore
 ```
 
-Esperado en `ls -a`: `.gitattributes`, `.gitignore`, `LICENSE`, `README.md`, `astro.config.ts`, `biome.json`, `bun.lock`, `docs`, `package.json`, `public`, `src`, `tsconfig.json`. **No** debe aparecer `node_modules` ni `dist`.
-
-El `README.md` de erudite queda sobrescribiendo temporalmente; la tarea 8 lo reemplaza por el propio.
+Esperado: `1` en los dos.
 
 - [ ] **Step 4: Verificar que git ve lo que debe y nada más**
 
