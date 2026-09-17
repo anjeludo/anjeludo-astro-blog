@@ -1,0 +1,99 @@
+services:
+  # ETAPA 0 - Docker crea los volumenes como root. Este paso unico los cede al
+  # uid 1000, que es el usuario 'bun' de las imagenes de build.
+  init-perms:
+    image: alpine:3
+    container_name: blog_init_perms
+    user: "0:0"
+    network_mode: none
+    command: sh -c "chown -R 1000:1000 /public /node_modules /astro_cache && echo 'PERMISOS OK'"
+    volumes:
+      - site_public:/public
+      - node_modules:/node_modules
+      - astro_cache:/astro_cache
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+
+  # ETAPA 1 - Unico servicio con red. Solo ve el manifiesto y el lockfile, y su
+  # unica salida es el volumen node_modules: con --frozen-lockfile, bun lee
+  # package.json y bun.lock pero no los reescribe.
+  deps:
+    image: oven/bun:1.4.2-alpine
+    container_name: blog_deps
+    entrypoint: sh
+    working_dir: /src
+    user: "1000:1000"
+    networks:
+      - build_net
+    depends_on:
+      init-perms:
+        condition: service_completed_successfully
+    environment:
+      HOME: /tmp
+      BUN_INSTALL_CACHE_DIR: /tmp/.bun-cache
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./package.json:/src/package.json:ro
+      - ./bun.lock:/src/bun.lock:ro
+      - node_modules:/src/node_modules
+    command: -c "bun install --frozen-lockfile && echo 'DEPS OK'"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ETAPA 2 - Sin red y con las fuentes en solo lectura.
+  #
+  # Cada fuente se monta por separado en vez de montar la raiz con .:/src:ro.
+  # Motivo: un volumen escribible en una ruta anidada dentro de un bind :ro
+  # necesita que el punto de montaje exista, y Docker no puede crearlo en un
+  # sistema de ficheros de solo lectura. En un clon recien hecho no existen
+  # node_modules/, .astro/ ni dist/. Con montajes explicitos, /src es un
+  # directorio del contenedor y Docker si puede crear ahi los mountpoints.
+  #
+  # OJO: si añades un fichero de configuracion en la raiz del proyecto, hay que
+  # añadir tambien su montaje aqui o el build no lo vera.
+  build:
+    image: oven/bun:1.4.2-alpine
+    container_name: blog_builder
+    entrypoint: sh
+    working_dir: /src
+    network_mode: none
+    user: "1000:1000"
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    environment:
+      HOME: /tmp
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./src:/src/src:ro
+      - ./public:/src/public:ro
+      - ./astro.config.ts:/src/astro.config.ts:ro
+      - ./package.json:/src/package.json:ro
+      - ./bun.lock:/src/bun.lock:ro
+      - ./tsconfig.json:/src/tsconfig.json:ro
+      - node_modules:/src/node_modules
+      - astro_cache:/src/.astro
+      - site_public:/src/dist
+    command: -c "bun run build && echo 'BUILD OK'"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  build_net:
+    driver: bridge
+
+volumes:
+  site_public:
+  node_modules:
+  astro_cache:
