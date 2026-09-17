@@ -58,6 +58,13 @@ services:
   #
   # OJO: si añades un fichero de configuracion en la raiz del proyecto, hay que
   # añadir tambien su montaje aqui o el build no lo vera.
+  #
+  # El comando vacia /src/dist antes de compilar. Astro sobreescribe lo que
+  # regenera, pero no borra lo que ya no reconoce: un fichero o directorio
+  # ajeno que quede en outDir (una entrada de una build anterior, un slug
+  # renombrado, un residuo de otro tema) sobrevive indefinidamente. Sin este
+  # vaciado, una pagina borrada podria seguir sirviendose para siempre — el
+  # mismo fallo que forzaba el `find -delete` en el proyecto de Hugo.
   build:
     image: oven/bun:1.4.2-alpine
     container_name: blog_builder
@@ -82,7 +89,7 @@ services:
       - node_modules:/src/node_modules
       - astro_cache:/src/.astro
       - site_public:/src/dist
-    command: -c "bun run build && echo 'BUILD OK'"
+    command: -c "find /src/dist -mindepth 1 -delete && bun run build && echo 'BUILD OK'"
     logging:
       driver: "json-file"
       options:
