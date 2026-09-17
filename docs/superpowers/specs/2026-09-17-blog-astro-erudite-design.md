@@ -1,0 +1,358 @@
+# Blog Astro + erudite sobre Docker — diseño
+
+Fecha: 2026-09-17
+
+Blog estático con la plantilla [astro-erudite](https://github.com/jktrn/astro-erudite)
+v2.0.1, construido y servido enteramente en Docker, reutilizando la infraestructura
+del proyecto hermano `hugo-docker-local` (Caddy + Nginx, CSP estricta, contenedores
+endurecidos, override de producción por `.env`).
+
+Nada —Node, bun, Astro— necesita estar instalado en el host. Solo Docker.
+
+## Punto de partida
+
+**Upstream del tema**: `jktrn/astro-erudite`, commit `1ffdf62bfd1c4dfc0fa770a0442b8545908689e7`
+(2026-07-27), versión 2.0.1, licencia MIT (© 2026 enscribe). Astro 7, Node ≥ 22.12.
+
+Sin framework de UI ni de CSS: CSS nativo con custom elements autónomos y escalas
+fluidas de Utopia. Procesador Markdown Sätteri, Expressive Code para bloques de
+código, Temml para matemáticas en MathML, fuentes IBM Plex auto-hospedadas.
+
+**Infraestructura reutilizada** de `/media/angel/SSD200/proyectos/blog/hugo-docker-local`:
+`docker-compose.yml`, `docker-compose.prod.yml`, `Caddyfile`, `Caddyfile.prod`,
+`nginx.conf`, `.env.example`, `.gitignore`. Todo lo específico de Hugo se descarta.
+Ese proyecto no contiene ningún directorio `.github`, por lo que no hay CI que
+trasladar.
+
+## Decisión de fondo: erudite es una plantilla, no un tema
+
+No existe `themes/`. El repositorio **es** el proyecto y se personaliza editando sus
+ficheros. Esto rompe el modelo mental de Hugo:
+
+| | Hugo + TailBliss | Astro + erudite |
+|---|---|---|
+| Ubicación del tema | `themes/tailbliss/`, aislado | el repositorio entero |
+| Personalización | overrides en `layouts/` | edición directa de los ficheros |
+| Actualización | descargar y diffear la carpeta | `upstream` remoto + merge/diff manual |
+| Sustituir el tema | borrar la carpeta | imposible: es el proyecto |
+
+**Consecuencia**: no hay capa de overrides que aísle los cambios locales. La
+estrategia de actualización es un remoto `upstream` hacia `jktrn/astro-erudite` y
+diff manual. Por eso los parches de CSP (sección "CSP") quedan documentados de
+forma explícita en `CLAUDE.md`: son exactamente lo que hay que reaplicar tras cada
+merge de upstream.
+
+## Arquitectura: pipeline de cinco etapas
+
+Encadenadas con `depends_on: service_completed_successfully`. Se conserva la
+**asimetría red/escritura** del proyecto de Hugo: solo una etapa tiene internet, y
+la que compila no puede ni salir a la red ni modificar las fuentes.
+
+| # | Servicio | Imagen | Red | Escribe en |
+|---|---|---|---|---|
+| 0 | `init-perms` | `alpine:3` | ninguna | `site_public`, `node_modules` → uid 1000 |
+| 1 | `deps` | `oven/bun:1-alpine` | **sí** | solo el volumen `node_modules` |
+| 2 | `build` | `oven/bun:1-alpine` | **ninguna** | `dist` y `.astro` (volúmenes) |
+| 3 | `nginx` | `nginxinc/nginx-unprivileged:1.31.5-alpine` | interna | nada |
+| 4 | `caddy` | `caddy:2.11.4-alpine` | interna | `/data` |
+
+Todas las imágenes con versión fijada, como en el proyecto de Hugo.
+
+### `init-perms`
+
+Docker crea los volúmenes como root y Nginx copia en el suyo sus ficheros por
+defecto. Cede `site_public` y `node_modules` al uid 1000. La imagen `oven/bun`
+corre como el usuario `bun` (uid 1000), así que el uid coincide con el de las
+etapas de Hugo y no hay que cambiar nada más.
+
+### `deps` — la única etapa con red
+
+Monta el proyecto en `/src:ro` y el volumen `node_modules` encima de
+`/src/node_modules`. Ejecuta `bun install --frozen-lockfile`.
+
+Con `--frozen-lockfile`, bun lee `package.json` y `bun.lock` pero no los reescribe,
+así que **esta etapa tampoco muta las fuentes**: su única salida es el volumen. La
+caché de bun se redirige con `BUN_INSTALL_CACHE_DIR=/tmp/.bun-cache` y `HOME=/tmp`.
+
+### `build` — sin red, fuentes en solo lectura
+
+`network_mode: none`, proyecto montado `:ro`, y tres volúmenes escribibles montados
+en rutas anidadas sobre él:
+
+```
+.:/src:ro                        las fuentes, intocables
+node_modules:/src/node_modules   dependencias + caché de Vite
+astro_cache:/src/.astro          tipos y caché de la content layer
+site_public:/src/dist            la salida
+```
+
+Los overlays anidados son necesarios porque **Astro escribe dentro del proyecto**
+durante el build: `.astro/` (tipos generados y caché de la content layer) y la caché
+de Vite en `node_modules/.astro`. Es el equivalente del `HUGO_CACHEDIR` /
+`HUGO_RESOURCEDIR` / `--noBuildLock` del proyecto de Hugo.
+
+Al montar la salida exactamente en `/src/dist`, que es el `outDir` por defecto de
+Astro, el comando de build no necesita flags de destino: `bun run build`.
+
+Comando: `bun run build` (que es `astro check && astro build`).
+
+### `nginx` y `caddy`
+
+Sin cambios funcionales respecto al proyecto de Hugo. `nginx.conf` se reutiliza tal
+cual: sirve `site_public`, `try_files $uri $uri/ =404`, caché inmutable de un año
+para assets con hash, `no-store` para HTML, `set_real_ip_from` en rangos privados,
+405 para métodos distintos de GET/HEAD, denegación de ficheros ocultos, `404.html`.
+
+El formato de salida por defecto de Astro es `directory` (`/blog/post/index.html`),
+que es justo lo que `try_files $uri $uri/` resuelve. Astro emite los assets con
+hash bajo `/_astro/`, cubiertos por la regla de caché inmutable. Y genera
+`/404.html`, que `error_page` ya espera.
+
+## Diferencias de comportamiento frente a Hugo
+
+Dos, y las dos van documentadas en `CLAUDE.md`:
+
+1. **Astro vacía `outDir` él solo** antes de cada build. El
+   `find /public -mindepth 1 -delete` que Hugo necesitaba (porque sobrescribe pero
+   no borra páginas que ya no existen en `content/`) no hace falta aquí. Se verifica
+   empíricamente en la implementación: se construye, se borra un post, se reconstruye
+   y se comprueba que su HTML desapareció. Si Astro no vaciase el punto de montaje,
+   se añade el wipe explícito al comando.
+
+2. **El build falla si el frontmatter está mal.** `astro check` valida TypeScript y
+   los schemas Zod de las colecciones. Hugo dejaba pasar contenido mal formado; aquí
+   un post con un campo obligatorio ausente rompe el build. Es una mejora, pero
+   cambia el modo de fallo: el error aparece al compilar, no al visitar la página.
+
+También desaparece la trampa de la fecha futura de Hugo: erudite filtra por
+`draft: true`, no por fecha.
+
+## CSP
+
+Política final, servida por Caddy en local y en producción:
+
+```
+default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
+font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none';
+form-action 'self'
+```
+
+Un paso **más estricta** que la del proyecto de Hugo: se elimina la concesión
+`style-src-attr 'unsafe-inline'`, que allí existía por dos plantillas de TailBliss
+con atributos `style=""`. erudite no usa ninguno.
+
+Las fuentes IBM Plex vienen auto-hospedadas en `src/assets/fonts/`, así que
+`font-src 'self'` se cumple sin cambios.
+
+### Los tres puntos de fricción y su solución
+
+Los `<script>` de Astro sin `is:inline` se empaquetan a ficheros externos y no dan
+problema. Los que sí:
+
+| Fichero | Problema | Solución |
+|---|---|---|
+| `astro.config.ts` | `build.inlineStylesheets` por defecto es `'auto'`: inlinea en `<style>` las hojas de menos de ~4 kB, y erudite tiene 19 bloques `<style>` repartidos por sus componentes | `build.inlineStylesheets: 'never'` |
+| `MetaHead.astro:59` | `<script is:inline>` que lee `localStorage.theme` antes del primer pintado (anti-parpadeo del modo oscuro) | extraer a `public/theme-init.js`, invocar con `<script src="/theme-init.js">` |
+| `SeriesReader.astro:1` | `<script is:inline>` que restaura la posición de scroll en los posts encadenados en serie | extraer a `public/series-scroll.js`, invocar con `<script src="/series-scroll.js">` |
+
+Los dos scripts extraídos se invocan **sin `async` ni `defer`**, en la misma
+posición del documento que ocupaban. Un `<script src>` clásico es síncrono y
+bloqueante, así que se ejecutan antes del primer pintado igual que antes: el
+comportamiento no cambia. La lógica de ambos se copia sin modificar.
+
+La alternativa de los hashes SHA-256 se descarta: acopla la CSP al contenido byte a
+byte, y al actualizar el tema un cambio de un solo espacio bloquearía el script
+**en silencio** —el síntoma sería un fogonazo blanco en cada carga, sin error
+evidente—. `'unsafe-inline'` se descarta por renunciar a la protección contra XSS,
+que es la razón de ser de todo el montaje.
+
+### A verificar en la implementación
+
+erudite activa `prefetch: { prefetchAll: true }`. Hay que comprobar en el HTML
+generado si Astro emite algo inline para ello. Si lo hiciera, se externaliza del
+mismo modo; si no, no hay nada que tocar. La verificación de la sección
+"Verificación" lo detecta automáticamente.
+
+## Local vs producción
+
+El dominio **nunca** aparece en ficheros versionados, igual que en el proyecto de
+Hugo. Los ficheros de producción son overrides aparte y el entorno local no se toca.
+
+```ts
+// astro.config.ts
+site: process.env.SITE_URL ?? "https://localhost",
+```
+
+```yaml
+# docker-compose.prod.yml
+services:
+  build:
+    environment:
+      SITE_URL: "https://${SITE_DOMAIN:?falta SITE_DOMAIN: copia .env.example a .env}/"
+  caddy:
+    environment:
+      SITE_DOMAIN: "${SITE_DOMAIN:?falta SITE_DOMAIN: copia .env.example a .env}"
+      ACME_EMAIL: "${ACME_EMAIL:?falta ACME_EMAIL: copia .env.example a .env}"
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+```
+
+Equivalente exacto del `HUGO_BASEURL` del proyecto de Hugo. `site` alimenta las URL
+canónicas, el RSS y el sitemap. `.env` sigue ignorado por git; `.env.example` trae
+`miblog.com` como ejemplo.
+
+Si falta `SITE_DOMAIN` o `ACME_EMAIL`, el despliegue se detiene con un mensaje claro
+en vez de arrancar mal configurado.
+
+HSTS queda escrito y comentado en `Caddyfile.prod`, con la misma advertencia que en
+el proyecto de Hugo: activarlo con el TLS roto deja el dominio inaccesible durante
+todo el `max-age` sin vuelta atrás rápida.
+
+### El bloque `www` se elimina
+
+`Caddyfile.prod` de Hugo incluye un bloque `www.{$SITE_DOMAIN}` que redirige al apex
+con un 301. Se **elimina** en este proyecto:
+
+- `miblog.com` ya es un subdominio; "www" delante no tiene sentido.
+- YDNS entrega registros de host concretos: `www.miblog.com` no resolvería.
+- Caddy pediría un certificado para ese nombre, fallaría el desafío ACME y
+  reintentaría, llenando el log de errores.
+
+Queda documentado en `Caddyfile.prod` como comentario, para reactivarlo el día que
+haya un dominio propio con registro `www`.
+
+## Contenido e identidad
+
+### `src/consts.ts`
+
+```ts
+export const SITE = {
+  title: "anjeludo blog",
+  description: "Personal blog of anjeludo.",
+  locale: "en-US",
+  dir: "ltr",
+  defaultPageImage: "/static/opengraph-image.png",
+  defaultPostImage: "/static/1200x630.png",
+} as const
+
+export const NAVIGATION = [
+  { href: "/blog", label: "Blog" },
+  { href: "/projects", label: "Projects" },
+]
+
+export const SOCIALS = [
+  { href: "https://github.com/anjeludo", label: "GitHub", icon: GitHub },
+  { href: "https://x.com/anjeludo", label: "X", icon: X },
+  { href: "/rss.xml", label: "RSS", icon: RSS },
+]
+```
+
+Sitio en inglés (`en-US`), monolingüe. Sin correo en las redes sociales.
+`/authors` sale de la navegación: con un solo autor la página no aporta, aunque sus
+rutas siguen generándose. `src/assets/icons/twitter.svg` (logo del pájaro) se
+sustituye por `x.svg` con el logo de X.
+
+La descripción del sitio es una línea en `src/consts.ts` y se cambia sin más.
+
+### Contenido
+
+Se borra todo el contenido de demo del tema:
+
+```
+src/content/blog/introducing-v2/     ~1300 líneas, es la documentación del tema
+src/content/blog/v1-posts/
+src/content/projects/project-{a,b,c}.md
+src/content/projects/placeholder.png
+src/content/authors/enscribe.md
+```
+
+Y se crea:
+
+```
+src/content/authors/anjeludo.md              perfil del autor
+src/content/blog/how-to-publish-a-post/       un post que sirve de plantilla
+  index.md
+src/content/projects/                          vacío
+```
+
+El post de ejemplo cumple el papel de `content/posts/como-publicar-un-post.md` en el
+proyecto de Hugo: documenta el frontmatter y ejercita lo que de verdad se va a usar
+—callouts con directivas `:::`, bloques de código de Expressive Code, código inline
+con `` `code{:lang}` ``, matemáticas con Temml, una imagen—. Está en inglés, como el
+resto del sitio.
+
+`src/content/projects/` se queda vacío. La página `/projects` debe seguir
+construyendo sin errores con la colección vacía; si no lo hiciera, se añade el
+manejo del caso vacío en `src/pages/projects/index.astro`.
+
+## Documentación del repositorio
+
+Se respeta la convención del proyecto de Hugo:
+
+- **`README.md` en español** — documentación de usuario: arquitectura del pipeline,
+  uso diario, estructura, cómo escribir posts, seguridad, despliegue en producción.
+  Incluye lo que YDNS implica: el servidor está en una red doméstica, hacen falta
+  los puertos 80, 443/tcp y 443/udp abiertos en el router y el cliente de YDNS
+  actualizando la IP.
+- **`CLAUDE.md` en inglés** — lo que no es obvio leyendo un solo fichero: la
+  naturaleza de plantilla del tema y la estrategia de actualización, los cuatro
+  parches de CSP y por qué existen, los overlays escribibles del build, las dos
+  diferencias de comportamiento frente a Hugo, y los comandos de verificación.
+
+## `.gitignore`
+
+Se conserva la estructura y los comentarios en español del proyecto de Hugo,
+sustituyendo la sección de Hugo por la de Astro y manteniendo intactas las de
+secretos, logs y editores:
+
+```
+dist/
+.astro/
+node_modules/
+.env  (con !.env.example)
+```
+
+## Verificación
+
+No hay suite de tests, igual que en el proyecto de Hugo: se verifica contra el sitio
+en marcha. Caddy sirve con una CA local, así que **curl necesita `-k`**.
+
+```bash
+# Cero <script>/<style> inline en todo el HTML generado.
+# Sin salida = correcto. Detecta también una posible regresión del prefetch.
+docker run --rm -v blog-astro_site_public:/d:ro alpine \
+  sh -c "grep -rlE '<(script|style)[^>]*>[^<]' /d --include='*.html'"
+
+curl -ksI https://localhost/ | grep -i content-security-policy
+curl -ks -o /dev/null -w '%{http_code}\n' https://localhost/            # 200
+curl -ks -o /dev/null -w '%{http_code}\n' https://localhost/blog/       # 200
+curl -ks -o /dev/null -w '%{http_code}\n' https://localhost/rss.xml     # 200
+curl -ks -o /dev/null -w '%{http_code}\n' https://localhost/no-existe   # 404
+```
+
+Y en el navegador, con la consola abierta: ninguna violación de CSP, y sin fogonazo
+blanco al recargar con el tema oscuro activo (eso valida `theme-init.js`).
+
+`astro check`, que forma parte de `bun run build`, valida TypeScript y los schemas
+de las colecciones en cada build.
+
+Verificación del vaciado de `outDir`: construir, borrar un post, reconstruir y
+comprobar que su HTML ya no está en el volumen.
+
+## Git
+
+`git init` en `blog-astro`, rama `main`. El `.git` de erudite se elimina: sus
+ficheros pasan a estar versionados en este repositorio, que queda autocontenido.
+Sin remoto `origin` por ahora. Se conserva el `LICENSE` MIT del tema.
+
+## Fuera de alcance
+
+- **CI/CD**: no se crea ningún workflow. `hugo-docker-local` no tiene `.github`
+  (la mención original a `.github` era un lapsus: se refería a `.gitignore`).
+- **i18n / multiidioma**: el sitio es monolingüe en inglés. erudite v2 no trae
+  infraestructura de i18n ni rutas por idioma; añadirla sería un proyecto aparte.
+- **Port forwarding, DDNS y DNS**: se documentan en el README, no se configuran.
+- **Rate limiting**: sigue sin haberlo, igual que en el proyecto de Hugo. Para un
+  sitio estático el riesgo es bajo; si llega tráfico hostil, `fail2ban` sobre los
+  logs de Caddy o el módulo `rate_limit`.
+- **Migrar el contenido del blog de Hugo**: no se traslada ningún post.
