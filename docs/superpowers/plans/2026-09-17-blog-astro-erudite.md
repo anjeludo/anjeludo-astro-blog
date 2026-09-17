@@ -599,16 +599,16 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Externalizar los dos scripts `is:inline` del tema
+### Task 4: Externalizar lo que Astro y el tema emiten inline
 
-Quita dos de las tres fuentes de contenido inline: los scripts marcados `is:inline` y el inlineado automático de hojas de estilo pequeñas.
+Quita tres de las cuatro fuentes de contenido inline: los scripts marcados `is:inline`, el inlineado automático de hojas de estilo pequeñas, y el inlineado automático de los scripts de componente.
 
 **Files:**
 - Create: `public/theme-init.js`
 - Create: `public/series-scroll.js`
 - Modify: `src/components/MetaHead.astro` (el bloque `<script is:inline>`, hacia la línea 59)
 - Modify: `src/components/SeriesReader.astro` (el bloque `<script is:inline>`, líneas 1-14)
-- Modify: `astro.config.ts` (añadir `build.inlineStylesheets`)
+- Modify: `astro.config.ts` (añadir `build.inlineStylesheets` y `vite.build.assetsInlineLimit`)
 
 **Interfaces:**
 - Consumes: el árbol del tema de la tarea 1 y el comando de verificación de la tarea 3.
@@ -724,9 +724,12 @@ En el objeto de `defineConfig`, después de `prefetch`, insertar:
 docker compose run --rm --no-deps build
 docker compose up -d
 
-# El script del anti-parpadeo ya no esta inline: debe dar 0
+# OJO: este recuento NO sirve como prueba. `ThemeToggle.astro` tambien
+# escribe localStorage.theme, asi que seguira dando 18 aunque el anti-parpadeo
+# este correctamente externalizado. La prueba valida es inspeccionar los bytes
+# del HTML y comprobar que el unico <script> que menciona el tema lleva src.
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
-  'find /d -name "*.html" -exec grep -l "localStorage.theme" {} + | wc -l'
+  'tr "\n" " " < /d/index.html | grep -oE "<script[^>]*>[^<]{0,80}"'
 
 # Los <style> inlineados por Astro: debe dar 0
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
@@ -1593,7 +1596,9 @@ Contenido obligatorio, además de lo anterior:
 Cubre lo que no es obvio leyendo un solo fichero. Contenido obligatorio:
 
 - **The theme is a template, not a theme.** No `themes/` directory; the repo *is* the project. Updating means `git fetch upstream` and diffing by hand. There is no override layer protecting local changes.
-- **The five CSP patches and why they exist**, as a table: `astro.config.ts` (`inlineStylesheets: 'never'`), `MetaHead.astro` and `SeriesReader.astro` (`is:inline` → `<script src>`), `lib/expressive-code/index.ts` (blanked `baseStyles`/`themeStyles`/`jsModules`), plus the `src/pages/ec/` endpoints. **These are what to reapply after every upstream merge.**
+- **The CSP patches and why each exists**, as a table: `astro.config.ts` (`build.inlineStylesheets: 'never'` **and** `vite.build.assetsInlineLimit: 0`), `MetaHead.astro` and `SeriesReader.astro` (`is:inline` → `<script src>`), `lib/expressive-code/index.ts` (blanked `baseStyles`/`themeStyles`/`jsModules`), plus the `src/pages/ec/` endpoints. **These are what to reapply after every upstream merge.**
+- **Why `vite.build.assetsInlineLimit: 0` is load-bearing and not an optimisation setting.** Astro inlines a component `<script>` into the HTML when it has no imports and fits under Vite's asset threshold (`astro/dist/core/build/plugins/plugin-scripts.js`). `script-src 'self'` blocks those silently — the symptom would be the theme toggle, the scroll-to-top button and the table of contents quietly not responding. A `<script>` without `is:inline` is **not** guaranteed to become an external file; this setting is what guarantees it.
+- **`localStorage.theme` appearing in the HTML is not evidence of a CSP violation.** `ThemeToggle.astro` writes it too, so grepping for that string always matches. The valid check is the canonical zero-inline command.
 - **`style-src-attr 'unsafe-inline'` is load-bearing and must not be removed**: `@expressive-code/core` applies syntax colors with an `InlineStyleAnnotation` that writes a `style=""` attribute on every token, and `lib/expressive-code/inline.ts` does the same for `` `code{:.scope}` ``. `style-src 'self'` still blocks `<style>` blocks.
 - **`is:inline` on a `<script src>` means "don't bundle", not "put it inline".** The tag keeps its `src` and is still an external same-origin file. Do not "fix" it.
 - **The writable overlays in the `build` stage**, and why sources are mounted one by one instead of `.:/src:ro` (a writable volume nested under a read-only bind cannot create its mountpoint). **Adding a config file at the project root means adding its mount to the compose file**, or the build will not see it.
@@ -1619,8 +1624,9 @@ ls docker-compose.yml docker-compose.prod.yml Caddyfile Caddyfile.prod \
 # La version de imagen que dice el README es la que hay en el compose
 grep -n 'image:' docker-compose.yml
 
-# Los cinco parches de CSP que lista CLAUDE.md estan de verdad
+# Los parches de CSP que lista CLAUDE.md estan de verdad
 grep -n 'inlineStylesheets' astro.config.ts
+grep -n 'assetsInlineLimit' astro.config.ts
 grep -n 'theme-init.js' src/components/MetaHead.astro
 grep -n 'series-scroll.js' src/components/SeriesReader.astro
 grep -n 'baseStyles: ""' src/lib/expressive-code/index.ts
@@ -1671,7 +1677,7 @@ como escribir posts y el despliegue, incluido lo que implica YDNS (servidor en
 red domestica, puertos 80 y 443 tcp/udp abiertos, sin registro www).
 
 CLAUDE.md en ingles, lo no obvio: que el tema es una plantilla y no un tema y
-por tanto no hay capa de overrides, los cinco parches de CSP que hay que
+por tanto no hay capa de overrides, los parches de CSP que hay que
 reaplicar tras cada merge de upstream, por que style-src-attr no se puede
 quitar, los overlays escribibles del build y las diferencias de comportamiento
 frente a Hugo.

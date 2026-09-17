@@ -192,8 +192,10 @@ Las fuentes IBM Plex vienen auto-hospedadas en `src/assets/fonts/`, así que
 
 ### Los tres puntos de fricción y su solución
 
-Los `<script>` de Astro sin `is:inline` se empaquetan a ficheros externos y no dan
-problema. Los que sí:
+Un `<script>` sin `is:inline` **no** se empaqueta siempre a un fichero externo:
+Astro lo inlinea si no tiene imports y cabe bajo el umbral de assets de Vite. Ese
+es un cuarto punto de fricción, descubierto durante la implementación y no en el
+diseño. Los cuatro:
 
 | Fichero | Problema | Solución |
 |---|---|---|
@@ -201,6 +203,7 @@ problema. Los que sí:
 | `MetaHead.astro:59` | `<script is:inline>` que lee `localStorage.theme` antes del primer pintado (anti-parpadeo del modo oscuro) | extraer a `public/theme-init.js`, invocar con `<script src="/theme-init.js">` |
 | `SeriesReader.astro:1` | `<script is:inline>` que restaura la posición de scroll en los posts encadenados en serie | extraer a `public/series-scroll.js`, invocar con `<script src="/series-scroll.js">` |
 | `lib/expressive-code/index.ts` | el plugin de Sätteri inyecta un `<style>` y uno o más `<script type="module">` **dentro del HTML de cada página con bloques de código** | vaciar `baseStyles`/`themeStyles`/`jsModules` en `customCreateRenderer` y servirlos como ficheros propios |
+| `astro.config.ts` (2) | Astro inlinea en un `<script type="module">` los scripts de componente sin imports que caben bajo el umbral de assets de Vite (`core/build/plugins/plugin-scripts.js`); afecta a `ThemeToggle`, `ScrollToTop` y `TableOfContents` | `vite.build.assetsInlineLimit: 0` |
 
 Los dos scripts extraídos se invocan **sin `async` ni `defer`**, en la misma
 posición del documento que ocupaban. Un `<script src>` clásico es síncrono y
