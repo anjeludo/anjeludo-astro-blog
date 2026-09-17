@@ -565,15 +565,15 @@ Esperado **en esta tarea**: una lista no vacía de ficheros HTML. Son tres cosas
 ```bash
 # El <script is:inline> del anti-parpadeo: en TODAS las paginas (tarea 4)
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
-  'grep -rl "localStorage.theme" /d --include="*.html" | wc -l'
+  'find /d -name "*.html" -exec grep -l "localStorage.theme" {} + | wc -l'
 
 # Los <style> que Astro inlinea por inlineStylesheets: auto (tarea 4)
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
-  'grep -rlE "<style>[^<]" /d --include="*.html" | wc -l'
+  'find /d -name "*.html" -exec grep -lE "<style>[^<]" {} + | wc -l'
 
 # Los <script type="module"> de Expressive Code (tarea 5)
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
-  'grep -rl "script type=\"module\"" /d --include="*.html" | wc -l'
+  'find /d -name "*.html" -exec grep -l "script type=\"module\"" {} + | wc -l'
 ```
 
 Esperado: los tres recuentos mayores que 0. Anotarlos: las tareas 4 y 5 los tienen que llevar a `0`.
@@ -726,11 +726,11 @@ docker compose up -d
 
 # El script del anti-parpadeo ya no esta inline: debe dar 0
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
-  'grep -rl "localStorage.theme" /d --include="*.html" | wc -l'
+  'find /d -name "*.html" -exec grep -l "localStorage.theme" {} + | wc -l'
 
 # Los <style> inlineados por Astro: debe dar 0
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
-  'grep -rlE "<style>[^<]" /d --include="*.html" | wc -l'
+  'find /d -name "*.html" -exec grep -lE "<style>[^<]" {} + | wc -l'
 
 # Los ficheros externos se sirven
 curl -ks -o /dev/null -w 'theme-init:    %{http_code}\n' https://localhost/theme-init.js
@@ -1296,7 +1296,7 @@ Esperado: `200` en todas. `/projects/` con la colección vacía es el caso frág
 # El titulo propio esta, y el del tema no
 curl -ks https://localhost/ | grep -o '<title>[^<]*</title>'
 docker run --rm -v blog-astro_site_public:/d:ro alpine sh -c \
-  'grep -rli "enscribe\|astro-erudite" /d --include="*.html" | wc -l'
+  'find /d -name "*.html" -exec grep -li "enscribe\|astro-erudite" {} + | wc -l'
 
 # Las rutas de la demo ya no existen
 curl -ks -o /dev/null -w 'demo v2:  %{http_code}\n' https://localhost/blog/introducing-v2/
