@@ -71,6 +71,14 @@ Consequences that will bite you:
   directory to unlink a file. The pipeline itself never creates such content, so this is a
   caveat, not a problem to solve. (Also: busybox `find -delete` exits `0` even when individual
   deletions fail, so such a wipe would hide the failure rather than report it.)
+- **`nginx.conf` must not build absolute redirects.** `build.format: 'directory'` makes every
+  page a directory (`/blog/index.html`), so a link without a trailing slash (or a manual
+  `curl https://localhost/blog`) hits `try_files $uri $uri/` and gets a 301. By default nginx
+  builds that `Location` from its own `$scheme` and `$server_port` — `http` and `8080`, the
+  internal values behind Caddy, not what the browser is using. Symptom: the browser gets sent
+  to `http://localhost:8080/...` and cannot connect. Fixed with `absolute_redirect off;` in the
+  `server` block, which makes nginx emit a relative `Location: /blog/` instead. The sibling
+  Hugo project's `nginx.conf` was copied from before this fix and still has the same defect.
 
 ## The theme is a template, not a theme
 

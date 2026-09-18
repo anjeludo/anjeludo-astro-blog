@@ -230,6 +230,12 @@ lectura; Nginx sin privilegios, con sistema de ficheros de solo lectura y `tmpfs
 `cap_drop: ALL` y solo `NET_BIND_SERVICE`; límites de memoria y CPU; rotación de logs; el
 backend no se expone al exterior (`expose`, no `ports`).
 
+**Redirecciones de Nginx**: `nginx.conf` lleva `absolute_redirect off;` a propósito. Sin él,
+un 301 (por ejemplo `/blog` → `/blog/`, que `try_files` genera para cualquier ruta que sea un
+directorio) se construye con el `$scheme` y el `$server_port` internos de Nginx —
+`http://localhost:8080/...`—, no con lo que el navegador tiene delante detrás de Caddy. Con la
+directiva, el `Location` es relativo (`/blog/`) y el navegador lo resuelve él mismo.
+
 > Si ves un error de CSP en la consola sobre un script inline procedente de `sandbox eval
 > code`, es una **extensión de tu navegador**, no el sitio: aquí no hay ni un solo `<script>`
 > inline. No añadas el hash que sugiere el navegador.
