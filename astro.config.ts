@@ -12,7 +12,9 @@ import { headingNamespace } from "./src/lib/heading-namespace"
 import { headingAnchors } from "./src/lib/heading-anchors"
 
 export default defineConfig({
-  site: "https://astro-erudite.vercel.app",
+  // El dominio nunca se escribe en un fichero versionado: en local esto es
+  // localhost, y docker-compose.prod.yml inyecta SITE_URL desde .env.
+  site: process.env.SITE_URL ?? "https://localhost",
   compressHTML: true,
   prefetch: { prefetchAll: true },
   // PARCHE CSP sobre el tema. Por defecto ('auto') Astro escribe en un <style>

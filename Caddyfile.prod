@@ -1,0 +1,61 @@
+# Configuracion de PRODUCCION. El dominio y el email se leen de .env
+# (copia .env.example a .env y rellenalos).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+{
+    # Let's Encrypt usa este correo para avisarte si un certificado va a
+    # caducar sin renovarse. Caddy pide y renueva los certificados solo.
+    email {$ACME_EMAIL}
+
+    servers {
+        protocols h1 h2 h3
+    }
+}
+
+{$SITE_DOMAIN} {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # style-src-attr cubre los atributos style="" y es OBLIGATORIO:
+        # Expressive Code colorea cada token de codigo con una
+        # InlineStyleAnnotation, que escribe un style="--0:...;--1:...".
+        # No abre 'unsafe-inline' a los bloques <style>, que siguen bloqueados
+        # por style-src 'self'.
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        Permissions-Policy "geolocation=(), camera=(), microphone=()"
+        -Server
+
+        # HSTS - ACTIVAR SOLO tras comprobar que el certificado real funciona.
+        # Si lo activas con el TLS roto, los navegadores que ya visitaron el
+        # sitio se negaran a entrar durante todo el max-age y no hay forma
+        # rapida de revertirlo.
+        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    reverse_proxy nginx:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        # Sobrescribe en vez de anadir: al ser el borde, impide que un cliente
+        # falsifique la cadena de X-Forwarded-For.
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+# NO hay bloque de www, a diferencia del proyecto de Hugo.
+#
+# miblog.com ya es un subdominio, asi que "www" delante no tiene sentido,
+# y YDNS entrega registros de host concretos: www.miblog.com no resolveria.
+# Caddy pediria un certificado para ese nombre, fallaria el desafio ACME y
+# reintentaria llenando el log de errores.
+#
+# El dia que haya un dominio propio con registro www, descomentar:
+#
+# www.{$SITE_DOMAIN} {
+#     import seguridad
+#     redir https://{$SITE_DOMAIN}{uri} permanent
+# }

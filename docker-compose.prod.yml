@@ -1,0 +1,18 @@
+# Override de PRODUCCION. No sustituye al fichero base, lo complementa:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# En local sigues usando simplemente 'docker compose up -d'.
+services:
+  build:
+    environment:
+      # Astro incrusta site en canonical, RSS y sitemap. Se inyecta aqui para
+      # que el mismo astro.config.ts (con localhost) sirva en los dos entornos.
+      SITE_URL: "https://${SITE_DOMAIN:?falta SITE_DOMAIN: copia .env.example a .env}/"
+
+  caddy:
+    environment:
+      SITE_DOMAIN: "${SITE_DOMAIN:?falta SITE_DOMAIN: copia .env.example a .env}"
+      ACME_EMAIL: "${ACME_EMAIL:?falta ACME_EMAIL: copia .env.example a .env}"
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
