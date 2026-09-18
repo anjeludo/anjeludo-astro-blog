@@ -8,7 +8,7 @@ export const SITE = {
   description: "Personal blog of anjeludo.",
   locale: "en-US",
   dir: "ltr",
-  defaultPageImage: "/static/opengraph-image.png",
+  defaultPageImage: "/static/1200x630.png",
   defaultPostImage: "/static/1200x630.png",
 } as const
 

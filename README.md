@@ -274,11 +274,23 @@ cp .env.example .env
 ```ini
 SITE_DOMAIN=miblog.com
 ACME_EMAIL=tu-correo@ejemplo.com
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
 ```
 
 `.env` está ignorado por git a propósito: **el dominio no se escribe nunca en un fichero
-versionado**. Si falta alguna de las dos variables, el despliegue se detiene con un mensaje
-claro (`falta SITE_DOMAIN: copia .env.example a .env`) en vez de arrancar mal configurado.
+versionado**. Si falta alguna de las dos primeras variables, el despliegue se detiene con un
+mensaje claro (`falta SITE_DOMAIN: copia .env.example a .env`) en vez de arrancar mal
+configurado.
+
+`COMPOSE_FILE` es la que evita la trampa siguiente: **en el servidor de producción, deja
+`COMPOSE_FILE` puesta en el `.env` para siempre**. Con ella, cualquier `docker compose ...`
+que ejecutes ahí —incluido el `docker compose run --rm --no-deps build` de "Uso diario"—
+carga automáticamente `docker-compose.prod.yml` sin que tengas que escribir los dos `-f` cada
+vez. Sin esa variable, ese mismo comando de uso diario, ejecutado tal cual en producción, no
+carga el override: `SITE_URL` queda sin definir, `astro.config.ts` cae a `https://localhost`,
+y el build escribe igualmente en el volumen `site_public` que sirve nginx en vivo. El
+resultado es que el enlace canónico de cada página, `rss.xml` y `sitemap-0.xml` empiezan a
+apuntar a `https://localhost/`, sin ningún síntoma visible en el sitio.
 
 ### 3. Desplegar
 
@@ -290,6 +302,11 @@ El override hace dos cosas: inyecta `SITE_URL=https://$SITE_DOMAIN/` en la etapa
 —para que los enlaces canónicos, el RSS y el sitemap salgan con el dominio real— y monta
 `Caddyfile.prod` en lugar del `Caddyfile` local. A partir de ahí Caddy pide y renueva el
 certificado de Let's Encrypt y redirige HTTP a HTTPS por su cuenta.
+
+Con `COMPOSE_FILE` ya en el `.env` del servidor (paso 2), este primer despliegue puede
+lanzarse también como `docker compose up -d`, sin los `-f`; el comando de arriba con los dos
+`-f` explícitos sigue funcionando igual y es el que conviene usar la primera vez, para no
+depender de que el `.env` ya exista.
 
 ### 4. Activar HSTS (después, no antes)
 

@@ -23,6 +23,16 @@ docker compose up -d
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
+**The plain `docker compose run --rm --no-deps build` above is only correct on the
+production host because `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` is set in
+its `.env`.** Without that variable, that exact command — run on production out of habit,
+since it is *the* documented daily command — silently skips `docker-compose.prod.yml`:
+`SITE_URL` is never injected, `astro.config.ts` falls back to `https://localhost`, and the
+build writes straight into the live `site_public` volume nginx is serving. Every canonical
+link, `rss.xml` and `sitemap-0.xml` then point at `https://localhost/`, with nothing visibly
+wrong on the site itself. `.env.example` documents `COMPOSE_FILE`; make sure it made it into
+the real `.env` on the production host, not just the template.
+
 There is no test suite. Verify against the running site — Caddy serves it with a local CA,
 so **curl needs `-k`**:
 
@@ -122,6 +132,17 @@ Everything below exists only to satisfy it. All of it is marked in the source wi
 
 **These are what to reapply after every upstream merge.** A lost patch does not fail the
 build: it fails silently in the browser.
+
+### `nginx.conf`'s cache split: hashed paths vs. hand-edited files
+
+`/_astro/` and `/ec/` are content-hashed — a content change is a new URL — so they get
+`Cache-Control: immutable` for a year. Everything else that used to match the same
+extension-based regex (`theme-init.js`, `series-scroll.js`, the favicons, everything under
+`public/static/`) has **no hash in its name**, and two of those files (`theme-init.js`,
+`series-scroll.js`) are exactly the ones this merge workflow expects you to hand-edit. They
+get a one-hour TTL instead. `location ^~ /_astro/` and `location ^~ /ec/` are prefix matches
+with `^~`, which in nginx beat regex locations regardless of declaration order, so this split
+does not depend on where the blocks sit in the file.
 
 ### `vite.build.assetsInlineLimit: 0` is load-bearing, not an optimisation
 
@@ -228,7 +249,11 @@ anything else — and never regenerate it outside the `deps` container.
 template in `.env.example`, which uses the placeholder `miblog.com`) and swaps `Caddyfile` for
 `Caddyfile.prod`. **Never hardcode the domain into a tracked file** — it has leaked once
 already, into `.env.example` and a comment in `Caddyfile.prod`, and had to be scrubbed from
-those and from the design documents. `git grep -i '<the real host>'` must come back empty.
+those and from the design documents. Before committing, `git grep` the tree for the real
+hostname (not the `miblog.com` placeholder) and confirm it comes back empty. **This only
+checks the current working tree** — `git grep` never searches history, so it cannot tell you
+whether the hostname was committed and later removed. If that matters, check history
+separately, e.g. `git log -p -- '*.env.example' Caddyfile.prod | grep -i '<hostname>'`.
 
 Missing variables fail loudly: `docker compose -f docker-compose.yml -f docker-compose.prod.yml
 config` errors with `falta SITE_DOMAIN: copia .env.example a .env` rather than deploying a

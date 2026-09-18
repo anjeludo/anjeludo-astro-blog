@@ -42,6 +42,8 @@ export default defineConfig({
         !/\/blog\/[^/]+\/[^/]+\/?$/.test(page) &&
         !/\/authors\/[^/]+\/?$/.test(page) &&
         !page.includes("/tags/") &&
+        // PARCHE CSP: excluye los assets de Expressive Code servidos en
+        // /ec/<hash>.css y /ec/<hash>.js, sacados del HTML por la CSP.
         !page.includes("/ec/"),
     }),
   ],
