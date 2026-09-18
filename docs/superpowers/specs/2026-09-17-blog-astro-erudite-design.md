@@ -309,7 +309,7 @@ services:
 
 Equivalente exacto del `HUGO_BASEURL` del proyecto de Hugo. `site` alimenta las URL
 canónicas, el RSS y el sitemap. `.env` sigue ignorado por git; `.env.example` trae
-`miblog.com` como ejemplo.
+el host de producción (un subdominio de YDNS) como ejemplo.
 
 Si falta `SITE_DOMAIN` o `ACME_EMAIL`, el despliegue se detiene con un mensaje claro
 en vez de arrancar mal configurado.
@@ -323,8 +323,8 @@ todo el `max-age` sin vuelta atrás rápida.
 `Caddyfile.prod` de Hugo incluye un bloque `www.{$SITE_DOMAIN}` que redirige al apex
 con un 301. Se **elimina** en este proyecto:
 
-- `miblog.com` ya es un subdominio; "www" delante no tiene sentido.
-- YDNS entrega registros de host concretos: `www.miblog.com` no resolvería.
+- el host de producción ya es un subdominio de DNS dinámico; "www" delante no tiene sentido.
+- YDNS entrega registros de host concretos: su variante `www.` no resolvería.
 - Caddy pediría un certificado para ese nombre, fallaría el desafío ACME y
   reintentaría, llenando el log de errores.
 

@@ -16,7 +16,7 @@
 - **Nada se instala en el host.** Solo Docker. Ningún paso ejecuta `bun`, `node` o `astro` directamente en la máquina.
 - **Identidad de git del repo**: `anjeludo <anjeludo@gmail.com>`. Ya está en `.git/config` local; no pasar `-c user.*` en ningún commit.
 - **Versiones de imagen fijadas.** Ninguna etiqueta `latest` ni rango. Las de la infra de Hugo se reutilizan exactas: `alpine:3`, `nginxinc/nginx-unprivileged:1.31.5-alpine`, `caddy:2.11.4-alpine`.
-- **El dominio nunca se escribe en un fichero versionado.** Se inyecta por entorno desde `.env`, que está en `.gitignore`. Valor de producción: `miblog.com`.
+- **El dominio nunca se escribe en un fichero versionado.** Se inyecta por entorno desde `.env`, que está en `.gitignore`. Valor de producción: el host de producción (un subdominio de YDNS).
 - **CSP final**, idéntica en `Caddyfile` y `Caddyfile.prod`:
   `default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`
 - **`style-src-attr 'unsafe-inline'` es obligatorio** y no debe eliminarse: Expressive Code colorea cada token con un atributo `style=""`. `style-src 'self'` sigue bloqueando los bloques `<style>`, que es lo que importa.
@@ -1445,8 +1445,8 @@ Sin bloque `www`, a diferencia del proyecto de Hugo. El motivo va escrito en el 
 
 # NO hay bloque de www, a diferencia del proyecto de Hugo.
 #
-# miblog.com ya es un subdominio, asi que "www" delante no tiene sentido,
-# y YDNS entrega registros de host concretos: www.miblog.com no resolveria.
+# el host de producción ya es un subdominio, asi que "www" delante no tiene sentido,
+# y YDNS entrega registros de host concretos: www.el host de producción no resolveria.
 # Caddy pediria un certificado para ese nombre, fallaria el desafio ACME y
 # reintentaria llenando el log de errores.
 #
@@ -1543,8 +1543,8 @@ lo inyecta desde SITE_DOMAIN en .env, igual que HUGO_BASEURL en el proyecto de
 Hugo. Si falta una variable el despliegue se detiene con un mensaje claro en
 vez de arrancar mal configurado.
 
-Caddyfile.prod no lleva bloque de www: miblog.com ya es un subdominio y
-YDNS no serviria www.miblog.com, asi que Caddy fallaria el desafio ACME
+Caddyfile.prod no lleva bloque de www: el host de producción ya es un subdominio y
+YDNS no serviria www.el host de producción, asi que Caddy fallaria el desafio ACME
 en bucle. Queda comentado para el dia que haya un dominio propio.
 
 HSTS escrito y comentado, hasta validar el certificado real.
