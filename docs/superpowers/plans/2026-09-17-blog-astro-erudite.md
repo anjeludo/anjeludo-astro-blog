@@ -1059,6 +1059,7 @@ Convierte la demo del tema en el blog de anjeludo.
 **Files:**
 - Modify: `src/consts.ts` (todo el fichero)
 - Modify: `src/components/AuthorCard.astro:6,20` (importa `twitter.svg`, que esta tarea borra)
+- Modify: `src/pages/index.astro` (la portada de erudite es una entrada de diccionario definiendo la palabra "erudite", con enlaces a enscribe y a `/blog/introducing-v2`, que esta tarea borra: quedaría un enlace muerto)
 - Create: `src/assets/icons/x.svg`
 - Delete: `src/assets/icons/twitter.svg`
 - Delete: `src/content/blog/introducing-v2/`, `src/content/blog/v1-posts/`, `src/content/authors/enscribe.md`, `src/content/projects/project-a.md`, `src/content/projects/project-b.md`, `src/content/projects/project-c.md`, `src/content/projects/placeholder.png`
