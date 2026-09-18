@@ -1592,6 +1592,7 @@ Contenido obligatorio, además de lo anterior:
 - **Tras escribir un post con bloques de código, ejecutar la comprobación de cero inline.** Es un hábito, no una curiosidad: Expressive Code puede emitir estilos por bloque para combinaciones de lenguaje o plugin que aún no se han usado, y eso reintroduciría un `<style>` inline que la CSP bloquea en silencio.
 - La sección de despliegue con lo que implica YDNS: el servidor está en una red doméstica, hay que abrir **80, 443/tcp y 443/udp** en el router, el 80 no es opcional porque Caddy lo necesita para el desafío ACME, y hace falta el cliente de YDNS actualizando la IP. Y que **no hay registro `www`**, a diferencia del proyecto de Hugo.
 - Activar HSTS después de validar el certificado, nunca antes.
+- **El bloque `www` comentado de `Caddyfile.prod` no funciona tal cual si se descomenta**: usa `import seguridad`, un snippet que este fichero no define (viene copiado del proyecto de Hugo, donde sí existe). Quien lo descomente tiene que envolver antes el bloque `header {}` en una definición `(seguridad) { ... }`, o Caddy se negará a cargar la configuración. Decirlo en el README, junto al despliegue.
 - Las comprobaciones tras el despliegue, con `curl -sI` sobre el dominio real.
 - **Pendiente de valorar**: sin rate limiting, igual que en el proyecto de Hugo; si llega tráfico hostil, `fail2ban` sobre los logs de Caddy o su módulo `rate_limit`.
 - Licencias: astro-erudite es MIT (© 2026 enscribe), `LICENSE` en la raíz.
