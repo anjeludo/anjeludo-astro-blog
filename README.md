@@ -256,13 +256,6 @@ El servidor de producción es **una máquina en una red doméstica**, y el domin
 - **Abre en el router los puertos 80, 443/tcp y 443/udp** hacia la máquina que sirve el blog.
   El **80 no es opcional**: Caddy lo necesita para el desafío ACME con el que Let's Encrypt
   emite y renueva el certificado. Sin él no hay HTTPS. El 443/udp es para HTTP/3.
-- **Hace falta un cliente de YDNS corriendo** en la red, actualizando el registro cada vez
-  que el operador cambia la IP. Si la IP se queda obsoleta, el sitio deja de resolver y, de
-  paso, falla la renovación del certificado.
-- **No hay registro `www`**, a diferencia del proyecto de Hugo. "www" delante de un
-  subdominio ya cualificado no tiene sentido, y YDNS solo entrega el registro de host
-  concreto que se ha dado de alta, así que la variante `www.` no resolvería: Caddy pediría un
-  certificado para ese nombre y fallaría el desafío ACME en bucle.
 
 ### 2. Configurar el dominio
 
