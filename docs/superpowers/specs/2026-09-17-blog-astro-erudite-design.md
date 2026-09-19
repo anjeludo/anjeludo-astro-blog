@@ -18,9 +18,7 @@ Sin framework de UI ni de CSS: CSS nativo con custom elements autónomos y escal
 fluidas de Utopia. Procesador Markdown Sätteri, Expressive Code para bloques de
 código, Temml para matemáticas en MathML, fuentes IBM Plex auto-hospedadas.
 
-**Infraestructura reutilizada** de `/media/angel/SSD200/proyectos/blog/hugo-docker-local`:
-`docker-compose.yml`, `docker-compose.prod.yml`, `Caddyfile`, `Caddyfile.prod`,
-`nginx.conf`, `.env.example`, `.gitignore`. Todo lo específico de Hugo se descarta.
+Todo lo específico de Hugo se descarta.
 Ese proyecto no contiene ningún directorio `.github`, por lo que no hay CI que
 trasladar.
 
