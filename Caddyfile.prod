@@ -30,11 +30,14 @@
         -Server
         -Via
 
-        # HSTS - ACTIVAR SOLO tras comprobar que el certificado real funciona.
-        # Si lo activas con el TLS roto, los navegadores que ya visitaron el
-        # sitio se negaran a entrar durante todo el max-age y no hay forma
-        # rapida de revertirlo.
-        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # HSTS - ACTIVO desde el 2026-09-19, tras comprobar en un navegador que
+        # el certificado real de Let's Encrypt valida sin avisos.
+        #
+        # Borrar esta linea NO desactiva HSTS: un navegador que ya haya visitado
+        # el sitio seguira exigiendo HTTPS durante todo el max-age. Para
+        # revertirlo de verdad hay que servir "max-age=0" y esperar a que
+        # caduque en cada visitante.
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
     }
 
     reverse_proxy nginx:8080 {

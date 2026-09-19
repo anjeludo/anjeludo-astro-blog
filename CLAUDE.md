@@ -261,8 +261,14 @@ misconfigured stack. That `config` call is also the safe way to inspect the prod
 **do not `up` the production stack from a development machine**, since Caddy would immediately
 attempt a live ACME challenge for a real host it cannot serve.
 
-HSTS is written but commented out in both Caddyfiles, and must stay that way until a real
-certificate has been verified in a browser. The commented-out `www` block at the end of
+HSTS is **active in `Caddyfile.prod`** since 2026-09-19, once the real Let's Encrypt
+certificate had been verified in a browser. It stays commented out in the local `Caddyfile`
+and must: `localhost` is a hostname shared by every project on the machine, and pinning HSTS
+there would force HTTPS on all of them for a year. Note that deleting the directive does not
+turn HSTS off — browsers that already saw it keep enforcing HTTPS for the whole `max-age`;
+undoing it for real means serving `max-age=0` until it expires everywhere.
+
+The commented-out `www` block at the end of
 `Caddyfile.prod` does **not** work as-is: it uses `import seguridad`, a snippet this file does
 not define (it was copied from the Hugo project, where it does). Uncommenting it without first
 wrapping the existing `header { ... }` directives in a `(seguridad) { ... }` snippet makes

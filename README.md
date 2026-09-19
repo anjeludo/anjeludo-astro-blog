@@ -308,18 +308,23 @@ lanzarse también como `docker compose up -d`, sin los `-f`; el comando de arrib
 `-f` explícitos sigue funcionando igual y es el que conviene usar la primera vez, para no
 depender de que el `.env` ya exista.
 
-### 4. Activar HSTS (después, no antes)
+### 4. HSTS
 
-Cuando hayas comprobado en el navegador que el certificado es válido, descomenta en
-`Caddyfile.prod`:
+Ya está activo en `Caddyfile.prod`:
 
 ```caddyfile
 Strict-Transport-Security "max-age=31536000; includeSubDomains"
 ```
 
-y vuelve a desplegar. **No lo actives antes**: si el TLS falla con HSTS puesto, los
-navegadores que ya visitaron el sitio se negarán a entrar durante todo el `max-age` y no hay
-forma rápida de revertirlo.
+Se activó *después* de comprobar en el navegador que el certificado era válido, que es el
+único orden seguro: con el TLS roto y HSTS puesto, los navegadores que ya visitaron el sitio
+se niegan a entrar durante todo el `max-age`.
+
+Y por el mismo motivo, **borrar esa línea no desactiva HSTS**. El navegador recuerda la
+cabecera que ya recibió. Para revertirlo de verdad hay que servir `max-age=0` y esperar a que
+caduque en cada visitante. En el `Caddyfile` local sigue comentada a propósito: `localhost` es
+un nombre que comparten todos tus proyectos, y fijar HSTS ahí obligaría a HTTPS en todos ellos
+durante un año.
 
 ### Comprobaciones tras el despliegue
 
